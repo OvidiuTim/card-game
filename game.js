@@ -1,23 +1,27 @@
 /* ============================================================
-   Card Carpet — prototip mecanic (v5)
+   Card Carpet — prototip mecanic (v6)
    ------------------------------------------------------------
-   - cărțile NU au efecte (zona de jos e rezervată pentru ele)
+   MODEL
+   - covorul = mai multe rânduri de cărți; numărul de rânduri va
+     depinde mai încolo de progres (CONFIG.randuriMax)
+   - nu se "încasează" nimic pe rând: TOTALUL COVORULUI e viu și
+     se recalculează mereu, iar viața inamicului = viață - total
    - numărul din stânga-sus ESTE puterea curentă a cărții
-   - fiecare carte are 4 margini (u/r/d/l), fiecare cu o suită sau null
 
-   CONEXIUNI — se verifică DUPĂ FIECARE CARTE JUCATĂ, pe tot rândul:
+   CONEXIUNI — după FIECARE carte jucată se verifică TOT COVORUL:
      · se fotografiază puterile de la începutul verificării
      · orice pereche vecină încă neplătită în care marginea lui A
        are suita lui B  ->  A primește puterea (din fotografie) a lui B
      · o pereche plătește o singură dată; puterea câștigată rămâne
-   Așa, o carte împinsă de o inserare care ajunge lângă / sub un
-   vecin potrivit își încasează punctele la următoarea verificare.
+   Merge în toate direcțiile: sus, jos, stânga, dreapta — deci și o
+   carte pusă pe rândul nou hrănește cartea de deasupra ei.
    ============================================================ */
 
 const H = '♥', D = '♦', C = '♣', S = '♠';
 
 const CONFIG = {
   latime: 6,        // maxim cărți pe rând
+  randuriMax: 0,    // 0 = nelimitat (mai încolo: cât covor a deblocat jucătorul)
   mana: 5,          // cărți în mână
   copii: 2,         // copii din fiecare carte în pachet
   viataInamic: 300,
@@ -43,11 +47,16 @@ const DEFS = [
   { id:'hypnos',  nume:'Hypnos',           v:4, s:S, e:{u:S,   r:D,   d:null,l:C}    }
 ];
 
+const CLASA_SUITA = { [H]:'s-h', [D]:'s-d', [C]:'s-c', [S]:'s-s' };
+
 /* ---------- stare ---------- */
-let deck, hand, board, sel, ehp, dmgRand, gata, ordine, animTimer, istoric;
+let deck, hand, board, sel, gata, ordine, animTimer, istoric;
 
 const $ = id => document.getElementById(id);
 const randCurent = () => board[board.length - 1];
+const toateCartile = () => board.flat();
+const totalCovor = () => toateCartile().reduce((s, c) => s + c.score, 0);
+const totalAfisat = () => toateCartile().reduce((s, c) => s + (c.shown || 0), 0);
 
 function pachetNou(){
   const d = [];
@@ -64,64 +73,58 @@ function trage(){
 function reset(){
   clearTimeout(animTimer);
   deck = pachetNou(); hand = []; board = [[]];
-  sel = null; ehp = CONFIG.viataInamic; dmgRand = []; gata = false; ordine = 0; istoric = [];
+  sel = null; gata = false; ordine = 0; istoric = [];
   trage();
   $('log').innerHTML = '';
   render();
 }
 
 /* ============================================================
-   CONEXIUNI
+   CONEXIUNI — se verifică tot covorul
    ============================================================ */
 function vecin(r, i, dir){
   const dd = { u:[-1,0], d:[1,0], l:[0,-1], r:[0,1] }[dir];
   const row = board[r + dd[0]];
   if(!row) return null;
-  const c = row[i + dd[1]];
-  return c ? { cell: c, r: r + dd[0] } : null;
+  return row[i + dd[1]] || null;
 }
 
-/* verifică TOT rândul curent și plătește orice conexiune nouă */
 function conecteaza(){
-  const r = board.length - 1;
   const foto = new Map();
-  board.forEach(row => row.forEach(c => foto.set(c, c.score)));
+  toateCartile().forEach(c => foto.set(c, c.score));
 
   const rezumat = [];
-  board[r].forEach((c, i) => {
+  board.forEach((row, r) => row.forEach((c, i) => {
     ['u','d','l','r'].forEach(dir => {
-      const v = vecin(r, i, dir);
-      if(!v) return;
-      const N = v.cell;
-      if(c.def.e[dir] !== N.def.s) return;     // marginea nu se potrivește cu suita vecinului
+      const N = vecin(r, i, dir);
+      if(!N) return;
+      if(c.def.e[dir] !== N.def.s) return;      // marginea nu se potrivește cu suita vecinului
       const cheie = dir + ':' + N.uid;
-      if(c.platit.has(cheie)) return;          // perechea asta a plătit deja
+      if(c.platit.has(cheie)) return;           // perechea asta a plătit deja
       c.platit.add(cheie);
       const p = foto.get(N);
       c.score += p;
       c.lit[dir] = true;
       rezumat.push(c.def.nume + ' +' + p + ' from ' + N.def.nume);
     });
-  });
+  }));
   return rezumat;
 }
 
 /* ============================================================
    RANDARE
    ============================================================ */
-const CLASA_SUITA = { [H]:'s-h', [D]:'s-d', [C]:'s-c', [S]:'s-s' };
 function suita(s){
-  if(!s) return '';
-  return '<span class="' + CLASA_SUITA[s] + '">' + s + '</span>';
+  return s ? '<span class="' + CLASA_SUITA[s] + '">' + s + '</span>' : '';
 }
 
 function cardHtml(c, cls, attr){
   const def = c.def, e = def.e, lit = c.lit || {};
   return '<div class="card ' + (cls||'') + '" ' + (attr||'') + '>'
-    + (e.u ? '<span class="e u' + (lit.u?' lit':'') + '">' + suita(e.u, lit.u) + '</span>' : '')
-    + (e.d ? '<span class="e d' + (lit.d?' lit':'') + '">' + suita(e.d, lit.d) + '</span>' : '')
-    + (e.l ? '<span class="e l' + (lit.l?' lit':'') + '">' + suita(e.l, lit.l) + '</span>' : '')
-    + (e.r ? '<span class="e r' + (lit.r?' lit':'') + '">' + suita(e.r, lit.r) + '</span>' : '')
+    + (e.u ? '<span class="e u' + (lit.u?' lit':'') + '">' + suita(e.u) + '</span>' : '')
+    + (e.d ? '<span class="e d' + (lit.d?' lit':'') + '">' + suita(e.d) + '</span>' : '')
+    + (e.l ? '<span class="e l' + (lit.l?' lit':'') + '">' + suita(e.l) + '</span>' : '')
+    + (e.r ? '<span class="e r' + (lit.r?' lit':'') + '">' + suita(e.r) + '</span>' : '')
     + '<div class="val">' + (c.shown != null ? c.shown : def.v) + '</div>'
     + '<div class="sui">' + suita(def.s) + '</div>'
     + '<div class="nume">' + def.nume + '</div>'
@@ -134,8 +137,10 @@ function gapHtml(activ, i){
 }
 
 function render(){
-  $('ehp').textContent = Math.max(0, ehp) + ' / ' + CONFIG.viataInamic;
-  $('ehpfill').style.width = Math.max(0, ehp / CONFIG.viataInamic * 100) + '%';
+  const total = totalAfisat();
+  const ramas = Math.max(0, CONFIG.viataInamic - total);
+  $('ehp').textContent = ramas + ' / ' + CONFIG.viataInamic;
+  $('ehpfill').style.width = (ramas / CONFIG.viataInamic * 100) + '%';
 
   const ultim = board.length - 1;
   $('mat').innerHTML = board.map((row, r) => {
@@ -148,9 +153,8 @@ function render(){
       c.nou = false;
     });
     h += gapHtml(potInsera, row.length);
-    if(!row.length) h += '<span class="rowsum" style="margin-left:0">play your first card…</span>';
-    if(dmgRand[r] != null) h += '<div class="rowdmg">→ ' + dmgRand[r] + ' dmg</div>';
-    else if(curent && row.length) h += '<div class="rowsum">total <b id="rowsum">0</b></div>';
+    if(!row.length) h += '<span class="rowsum" style="margin-left:0">play a card…</span>';
+    else h += '<div class="rowsum">row <b data-rowsum="' + r + '">0</b></div>';
     return '<div class="row">' + h + '</div>';
   }).join('');
   $('mat').scrollTop = $('mat').scrollHeight;
@@ -163,37 +167,47 @@ function render(){
     ? 'Your hand — click a card (or keys 1–' + CONFIG.mana + ')'
     : 'Selected: <b>' + hand[sel].nume + '</b> — click a gap in the bottom row (gaps between cards work too)';
 
-  $('status').innerHTML = 'deck: ' + deck.length + ' · row ' + board.length
+  $('status').innerHTML = 'deck: ' + deck.length + ' · rows: ' + board.length
+    + (CONFIG.randuriMax ? '/' + CONFIG.randuriMax : '')
     + ' · ' + randCurent().length + '/' + CONFIG.latime;
-  $('btnEnd').disabled = gata || !randCurent().length;
-  $('btnUndo').disabled = gata || !istoric.length;
+
+  const randPlin = CONFIG.randuriMax && board.length >= CONFIG.randuriMax;
+  $('btnEnd').disabled = gata || !randCurent().length || randPlin;
+  $('btnUndo').disabled = !istoric.length;
   updateTotal();
 }
 
 function updateTotal(){
-  const t = randCurent().reduce((s, c) => s + (c.shown || 0), 0);
-  $('rowtotal').textContent = t;
-  const rs = $('rowsum');
-  if(rs) rs.textContent = t;
+  const total = totalAfisat();
+  $('rowtotal').textContent = total;
+  const ramas = Math.max(0, CONFIG.viataInamic - total);
+  $('ehp').textContent = ramas + ' / ' + CONFIG.viataInamic;
+  $('ehpfill').style.width = (ramas / CONFIG.viataInamic * 100) + '%';
+  board.forEach((row, r) => {
+    const el = document.querySelector('[data-rowsum="' + r + '"]');
+    if(el) el.textContent = row.reduce((s, c) => s + (c.shown || 0), 0);
+  });
 }
 
 /* ---------- animația numerelor: 3-4-5-6 ---------- */
 function anim(){
   clearTimeout(animTimer);
-  const r = board.length - 1;
   const step = () => {
     let changed = false;
-    board[r].forEach((c, i) => {
+    board.forEach((row, r) => row.forEach((c, i) => {
       if(c.shown === c.score) return;
       const dir = c.shown < c.score ? 1 : -1;
       c.shown += dir;
       changed = true;
       const el = document.querySelector('[data-cell="' + r + ':' + i + '"] .val');
       if(el){ el.textContent = c.shown; el.className = 'val ' + (dir > 0 ? 'up' : 'down'); }
-    });
+    }));
     updateTotal();
     if(changed) animTimer = setTimeout(step, CONFIG.pasAnim);
-    else document.querySelectorAll('.val.up,.val.down').forEach(e => e.className = 'val');
+    else {
+      document.querySelectorAll('.val.up,.val.down').forEach(e => e.className = 'val');
+      verificaVictoria();
+    }
   };
   step();
 }
@@ -204,6 +218,15 @@ function logEntry(head, det, cls){
   div.innerHTML = '<div class="head ' + (cls||'') + '">' + head + '</div>'
     + (det ? '<div class="det">' + det + '</div>' : '');
   $('log').prepend(div);
+}
+
+function verificaVictoria(){
+  if(gata) return;
+  if(totalCovor() >= CONFIG.viataInamic){
+    gata = true;
+    logEntry('★ ENEMY DEFEATED — carpet total ' + totalCovor() + ' ★', '', 'win');
+    render();
+  }
 }
 
 /* ============================================================
@@ -217,11 +240,12 @@ function selecteaza(i){
 
 function fotografie(){
   return {
-    row: randCurent().map(c => ({
-      def:c.def, score:c.score, shown:c.shown, uid:c.uid, ord:c.ord,
+    board: board.map(row => row.map(c => ({
+      def:c.def, score:c.score, shown:c.shown, uid:c.uid,
       lit:Object.assign({}, c.lit), platit:new Set(c.platit)
-    })),
-    hand: hand.slice()
+    }))),
+    hand: hand.slice(),
+    gata: gata
   };
 }
 
@@ -235,7 +259,7 @@ function insereaza(i){
   const def = hand[sel];
   const uid = ++ordine;
   row.splice(i, 0, {
-    def: def, shown: def.v, score: def.v, uid: uid, ord: uid,
+    def: def, shown: def.v, score: def.v, uid: uid,
     lit: {}, platit: new Set(), nou: true
   });
   hand.splice(sel, 1);
@@ -244,44 +268,31 @@ function insereaza(i){
   const rezumat = conecteaza();
   render();
   anim();
-  if(rezumat.length) logEntry(def.v + def.s + ' ' + def.nume + ' played', '· ' + rezumat.join('\n· '));
+  logEntry(def.v + def.s + ' ' + def.nume + ' played',
+           rezumat.length ? '· ' + rezumat.join('\n· ') : '· no links');
 }
 
 function undo(){
-  if(gata || !istoric.length) return;
+  if(!istoric.length) return;
   const f = istoric.pop();
-  board[board.length - 1] = f.row;
+  board = f.board;
   hand = f.hand;
+  gata = f.gata;
   sel = null;
   render();
   anim();
 }
 
-function lovesteCuRandul(){
-  const r = board.length - 1;
-  const row = board[r];
-  if(gata || !row.length) return;
-
-  clearTimeout(animTimer);
-  row.forEach(c => c.shown = c.score);
-
-  const dmg = row.reduce((s, c) => s + c.score, 0);
-  dmgRand[r] = dmg;
-  ehp -= dmg;
-
-  logEntry('ROW ' + (r+1) + ' → ' + dmg + ' dmg',
-    row.map(c => '· ' + c.def.nume + ' (' + c.def.v + c.def.s + ') = ' + c.score).join('\n'));
-
-  if(ehp <= 0){
-    gata = true;
-    logEntry('★ ENEMY DEFEATED in ' + (r+1) + ' rows ★', '', 'win');
-    render();
-    return;
-  }
+/* „Build row" = închide rândul curent și începe unul nou pe covor.
+   Nu se calculează damage aici — totalul covorului e viu tot timpul. */
+function randNou(){
+  if(gata || !randCurent().length) return;
+  if(CONFIG.randuriMax && board.length >= CONFIG.randuriMax) return;
+  istoric.push(fotografie());
   board.push([]);
-  istoric = [];
   trage();
   render();
+  logEntry('Row ' + (board.length - 1) + ' closed — carpet total ' + totalCovor(), '');
 }
 
 /* ---------- evenimente (delegate) ---------- */
@@ -293,13 +304,13 @@ $('mat').addEventListener('click', e => {
   const el = e.target.closest('[data-gap]');
   if(el) insereaza(+el.dataset.gap);
 });
-$('btnEnd').addEventListener('click', lovesteCuRandul);
+$('btnEnd').addEventListener('click', randNou);
 $('btnUndo').addEventListener('click', undo);
 $('btnReset').addEventListener('click', reset);
 document.addEventListener('keydown', e => {
   if(e.key >= '1' && e.key <= '9') selecteaza(+e.key - 1);
   if(e.key === 'Escape'){ sel = null; render(); }
-  if(e.key === 'Enter') lovesteCuRandul();
+  if(e.key === 'Enter') randNou();
   if(e.key === 'Backspace'){ e.preventDefault(); undo(); }
 });
 

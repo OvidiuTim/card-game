@@ -11,7 +11,7 @@
 <div class="wrap">
   <div class="main">
     <h1>Card Carpet</h1>
-    <div class="sub">mechanics prototype — no card effects yet, links only</div>
+    <div class="sub">mechanics prototype — no card effects yet, live carpet total</div>
 
     <div class="enemy">
       <div class="hptxt"><span>Stone Colossus</span><span id="ehp">300 / 300</span></div>
@@ -24,7 +24,7 @@
       <button id="btnEnd">Build row</button>
       <button id="btnUndo">Undo last</button>
       <button id="btnReset">New game</button>
-      <span class="total">row total: <b id="rowtotal">0</b></span>
+      <span class="total">carpet total: <b id="rowtotal">0</b></span>
       <span class="status" id="status"></span>
     </div>
 
@@ -40,9 +40,9 @@
       <ol>
         <li>Pick a card from your hand, then click a <b>gap</b> in the bottom row — including <b>between</b> two cards already played; the rest shift right.</li>
         <li><b>Link</b>: the suit drawn on your card's edge (top/bottom/left/right) matches the <i>suit of the neighbour</i> on that side → you take that neighbour's current power.</li>
-        <li>After every card played, the whole row is re-checked — any new neighbour pair that lines up pays out, including cards that got pushed around.</li>
+        <li>After every card played the <b>whole carpet</b> is re-checked, in all four directions — a card on the new row feeds the card above it too.</li>
         <li>A link pays only once per pair. Power gained is kept — it becomes the card's new base power.</li>
-        <li><b>Build row</b> = deal the row's total as damage. The row stays on the carpet and the next one can link up into it.</li>
+        <li>Nothing is ever "cashed in": the <b>carpet total</b> is live and the enemy's health is what's left of it. <b>Build row</b> just starts a new row.</li>
       </ol>
     </div>
     <div class="log" id="log"></div>

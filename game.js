@@ -15,7 +15,6 @@
    ============================================================ */
 
 const H = '♥', D = '♦', C = '♣', S = '♠';
-const RED = [H, D];
 
 const CONFIG = {
   latime: 6,        // maxim cărți pe rând
@@ -110,9 +109,10 @@ function conecteaza(){
 /* ============================================================
    RANDARE
    ============================================================ */
-function suita(s, lit){
+const CLASA_SUITA = { [H]:'s-h', [D]:'s-d', [C]:'s-c', [S]:'s-s' };
+function suita(s){
   if(!s) return '';
-  return '<span class="' + (RED.includes(s) ? 'red' : 'blk') + (lit ? ' lit' : '') + '">' + s + '</span>';
+  return '<span class="' + CLASA_SUITA[s] + '">' + s + '</span>';
 }
 
 function cardHtml(c, cls, attr){

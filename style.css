@@ -9,7 +9,10 @@
   --gold:#ffcf66;
   --paper:#f7f2e7;
   --paper-ink:#141118;
-  --paper-red:#d83322;
+  --suit-h:#d8241a;   /* inima  — rosu */
+  --suit-d:#e0a000;   /* romb   — galben */
+  --suit-c:#15603a;   /* trefla — verde inchis */
+  --suit-s:#1b3a86;   /* pica   — albastru inchis */
 
   --cardW:150px;
   --cardH:206px;
@@ -67,11 +70,13 @@ h1{font-size:18px;margin:0 0 4px;letter-spacing:.1em;text-transform:uppercase}
 .e.d{bottom:0;left:50%; transform:translate(-50%, 50%)}
 .e.l{left:0; top:50%;  transform:translate(-50%,-50%)}
 .e.r{right:0;top:50%;  transform:translate( 50%,-50%)}
-.e.lit{filter:drop-shadow(0 0 5px #4ade80)}
-.e.lit .red,.e.lit .blk{color:#15803d}
+.e.lit{filter:drop-shadow(0 0 6px #22c55e) drop-shadow(0 0 2px #22c55e)}
 
-.red{color:var(--paper-red)}
-.blk{color:#0d0b12}
+/* culorile suitelor */
+.s-h{color:var(--suit-h)}                                   /* inima  — rosu   */
+.s-d{color:var(--suit-d);-webkit-text-stroke:.6px rgba(90,55,0,.55)}  /* romb — galben */
+.s-c{color:var(--suit-c)}                                   /* trefla — verde inchis */
+.s-s{color:var(--suit-s)}                                   /* pica   — albastru inchis */
 
 .card.nou{animation:pop .22s ease-out}
 @keyframes pop{from{transform:scale(.82);opacity:.3}to{transform:scale(1);opacity:1}}

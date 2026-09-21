@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="ro">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="dark">
+<title>Covorul de cărți — prototip</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="wrap">
+  <div class="main">
+    <h1>Covorul de cărți</h1>
+    <div class="sub">prototip mecanic — fără grafică</div>
+
+    <div class="enemy">
+      <div class="hptxt"><span>Colosul de piatră</span><span id="ehp">500 / 500</span></div>
+      <div class="hpbar"><div class="hpfill" id="ehpfill"></div></div>
+    </div>
+
+    <div class="mat" id="mat"></div>
+
+    <div class="bar">
+      <button id="btnEnd">Încheie rândul</button>
+      <button id="btnReset">Joc nou</button>
+      <span class="status" id="status"></span>
+    </div>
+
+    <div class="handwrap">
+      <div class="handlbl" id="handlbl">Mâna ta — click pe o carte (sau tastele 1–5)</div>
+      <div class="hand" id="hand"></div>
+    </div>
+  </div>
+
+  <aside class="side">
+    <div class="rules">
+      <b>Cum merge</b>
+      <ol>
+        <li>Pui cărți în rândul de jos (4 sloturi).</li>
+        <li><b>Legătură</b>: dacă simbolul de pe marginea cărții tale (sus/jos/stânga/dreapta) e aceeași suită cu <i>suita vecinului</i> din direcția aia → primești valoarea lui.</li>
+        <li>Apoi se activează efectele, de la stânga la dreapta.</li>
+        <li>Rândul plin (sau „Încheie rândul") = damage. Rândul rămâne pe covor și următorul se poate lega în sus cu el.</li>
+      </ol>
+    </div>
+    <div class="log" id="log"></div>
+  </aside>
+</div>
+<script src="game.js"></script>
+</body>
+</html>

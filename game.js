@@ -1,102 +1,54 @@
 /* ============================================================
-   Covorul de cărți — prototip mecanic
+   Card Carpet — prototip mecanic (v5)
    ------------------------------------------------------------
-   REGULI
-   - fiecare carte are 4 margini (u=sus, r=dreapta, d=jos, l=stânga),
-     fiecare cu o suită sau null
-   - LEGĂTURĂ: marginea ta din direcția X are aceeași suită cu
-     SUITA vecinului din direcția X  ->  primești valoarea lui
-   - după legături se aplică efectele, de la stânga la dreapta
-   - rând încheiat = damage în inamic; rândul rămâne pe covor
+   - cărțile NU au efecte (zona de jos e rezervată pentru ele)
+   - numărul din stânga-sus ESTE puterea curentă a cărții
+   - fiecare carte are 4 margini (u/r/d/l), fiecare cu o suită sau null
+
+   CONEXIUNI — se verifică DUPĂ FIECARE CARTE JUCATĂ, pe tot rândul:
+     · se fotografiază puterile de la începutul verificării
+     · orice pereche vecină încă neplătită în care marginea lui A
+       are suita lui B  ->  A primește puterea (din fotografie) a lui B
+     · o pereche plătește o singură dată; puterea câștigată rămâne
+   Așa, o carte împinsă de o inserare care ajunge lângă / sub un
+   vecin potrivit își încasează punctele la următoarea verificare.
    ============================================================ */
 
 const H = '♥', D = '♦', C = '♣', S = '♠';
 const RED = [H, D];
 
 const CONFIG = {
-  latime: 4,        // sloturi pe rând
+  latime: 6,        // maxim cărți pe rând
   mana: 5,          // cărți în mână
-  copii: 3,         // câte copii din fiecare carte în pachet
-  viataInamic: 500
+  copii: 2,         // copii din fiecare carte în pachet
+  viataInamic: 300,
+  pasAnim: 70       // ms per punct, cât de repede urcă numerele
 };
 
-/* ---------- cele 10 cărți de test ---------- */
+/* ---------- cele 12 cărți: 2/3/4 × cele 4 suite, zero efecte ---------- */
 const DEFS = [
-  { id:'goblin',  nume:'Goblin rătăcitor',  v:5,  s:D, lbl:'5', e:{u:D,   r:D,   d:null,l:null}, fx:'—' },
-  { id:'unicorn', nume:'Unicorn',           v:10, s:H, lbl:'10',e:{u:D,   r:H,   d:H,   l:D},    fx:'×2 pt. fiecare legătură roșie' },
-  { id:'centaur', nume:'Centaur explorator',v:3,  s:C, lbl:'3', e:{u:S,   r:C,   d:null,l:C},    fx:'+3 fiecărei cărți legate' },
-  { id:'loki',    nume:'Loki',              v:7,  s:S, lbl:'7', e:{u:D,   r:H,   d:C,   l:S},    fx:'fură 1/2 din cel mai mare vecin legat' },
-  { id:'phoenix', nume:'Phoenix',           v:14, s:C, lbl:'A', e:{u:null,r:C,   d:C,   l:null}, fx:'×3 dacă nu are nicio legătură' },
-  { id:'gaia',    nume:'Gaia',              v:12, s:D, lbl:'D', e:{u:D,   r:H,   d:null,l:H},    fx:'+2 pt. fiecare carte de pe rândul de sus' },
-  { id:'cerber',  nume:'Cerber',            v:9,  s:C, lbl:'9', e:{u:C,   r:C,   d:null,l:C},    fx:'+6 pt. fiecare legătură' },
-  { id:'lebede',  nume:'Pereche de lebede', v:2,  s:H, lbl:'2', e:{u:null,r:H,   d:null,l:H},    fx:'dublează cărțile legate' },
-  { id:'odin',    nume:'Odin',              v:13, s:S, lbl:'R', e:{u:S,   r:null,d:S,   l:D},    fx:'copiază scorul celui mai mare vecin legat' },
-  { id:'pegasus', nume:'Pegasus',           v:6,  s:C, lbl:'6', e:{u:C,   r:D,   d:H,   l:null}, fx:'+50% la totalul rândului' }
+  { id:'lebede',  nume:'Pair of Swans',    v:2, s:H, e:{u:null,r:H,   d:null,l:H}    },
+  { id:'nimfa',   nume:'Nymph',            v:3, s:H, e:{u:H,   r:C,   d:null,l:D}    },
+  { id:'sirena',  nume:'Sleeping Siren',   v:4, s:H, e:{u:D,   r:H,   d:null,l:S}    },
+
+  { id:'spiridus',nume:'Sprite',           v:2, s:D, e:{u:H,   r:D,   d:C,   l:S}    },
+  { id:'gnom',    nume:'Gnome',            v:3, s:D, e:{u:D,   r:D,   d:null,l:D}    },
+  { id:'dragon',  nume:'Guardian Dragon',  v:4, s:D, e:{u:D,   r:H,   d:null,l:D}    },
+
+  { id:'ianus',   nume:'Janus',            v:2, s:C, e:{u:null,r:C,   d:null,l:C}    },
+  { id:'centaur', nume:'Centaur Scout',    v:3, s:C, e:{u:S,   r:C,   d:null,l:C}    },
+  { id:'faun',    nume:'Faun',             v:4, s:C, e:{u:C,   r:H,   d:null,l:H}    },
+
+  { id:'sfinx',   nume:'Sphinx',           v:2, s:S, e:{u:C,   r:C,   d:null,l:S}    },
+  { id:'harpyie', nume:'Harpy',            v:3, s:S, e:{u:D,   r:S,   d:null,l:H}    },
+  { id:'hypnos',  nume:'Hypnos',           v:4, s:S, e:{u:S,   r:D,   d:null,l:C}    }
 ];
 
-/* ---------- efecte ----------
-   c   = cartea curentă  (c.score, c.links, c.r, c.c)
-   api = { log(text), mult(x) }   mult() înmulțește TOTALUL rândului
-   notă: efectele care modifică alte cărți lovesc doar cărți din rândul curent
-*/
-const EFFECTS = {
-  unicorn(c, api){
-    const n = c.links.filter(l => RED.includes(l.cell.def.s)).length;
-    if(!n) return;
-    const m = Math.pow(2, n), b = c.score;
-    c.score = b * m;
-    api.log('Unicorn: ' + n + ' legături roșii → ' + b + ' ×' + m + ' = ' + c.score);
-  },
-  centaur(c, api){
-    const t = c.links.filter(l => l.cell.r === c.r);
-    t.forEach(l => l.cell.score += 3);
-    if(t.length) api.log('Centaur: +3 la ' + t.length + ' cărți legate');
-  },
-  loki(c, api){
-    const t = c.links.filter(l => l.cell.r === c.r).sort((a,b) => b.cell.score - a.cell.score)[0];
-    if(!t) return;
-    const h = Math.floor(t.cell.score / 2);
-    t.cell.score -= h; c.score += h;
-    api.log('Loki: fură ' + h + ' de la ' + t.cell.def.nume);
-  },
-  phoenix(c, api){
-    if(c.links.length) return;
-    const b = c.score; c.score = b * 3;
-    api.log('Phoenix: singur → ' + b + ' ×3 = ' + c.score);
-  },
-  gaia(c, api){
-    const n = (board[c.r - 1] || []).filter(Boolean).length;
-    if(!n) return;
-    c.score += 2 * n;
-    api.log('Gaia: +' + (2*n) + ' (' + n + ' cărți pe rândul de sus)');
-  },
-  cerber(c, api){
-    if(!c.links.length) return;
-    c.score += 6 * c.links.length;
-    api.log('Cerber: +' + (6*c.links.length) + ' (' + c.links.length + ' legături)');
-  },
-  lebede(c, api){
-    const t = c.links.filter(l => l.cell.r === c.r);
-    t.forEach(l => l.cell.score *= 2);
-    if(t.length) api.log('Lebede: dublează ' + t.length + ' cărți legate');
-  },
-  odin(c, api){
-    const t = c.links.slice().sort((a,b) => b.cell.score - a.cell.score)[0];
-    if(t && t.cell.score > c.score){
-      api.log('Odin: copiază ' + t.cell.score + ' de la ' + t.cell.def.nume);
-      c.score = t.cell.score;
-    }
-  },
-  pegasus(c, api){
-    api.mult(1.5);
-    api.log('Pegasus: ×1.5 la totalul rândului');
-  }
-};
-
 /* ---------- stare ---------- */
-let deck, hand, board, sel, ehp, dmgRand, gata;
+let deck, hand, board, sel, ehp, dmgRand, gata, ordine, animTimer, istoric;
 
 const $ = id => document.getElementById(id);
+const randCurent = () => board[board.length - 1];
 
 function pachetNou(){
   const d = [];
@@ -104,7 +56,6 @@ function pachetNou(){
   for(let i=d.length-1;i>0;i--){ const j = (Math.random()*(i+1))|0; [d[i],d[j]]=[d[j],d[i]]; }
   return d;
 }
-function randGol(){ return new Array(CONFIG.latime).fill(null); }
 function trage(){
   while(hand.length < CONFIG.mana){
     if(!deck.length) deck = pachetNou();
@@ -112,29 +63,74 @@ function trage(){
   }
 }
 function reset(){
-  deck = pachetNou(); hand = []; board = [randGol()];
-  sel = null; ehp = CONFIG.viataInamic; dmgRand = []; gata = false;
+  clearTimeout(animTimer);
+  deck = pachetNou(); hand = []; board = [[]];
+  sel = null; ehp = CONFIG.viataInamic; dmgRand = []; gata = false; ordine = 0; istoric = [];
   trage();
   $('log').innerHTML = '';
-  $('btnEnd').disabled = false;
   render();
 }
 
-/* ---------- randare ---------- */
-function suita(s){ return s ? '<span class="' + (RED.includes(s) ? 'red' : 'blk') + '">' + s + '</span>' : ''; }
+/* ============================================================
+   CONEXIUNI
+   ============================================================ */
+function vecin(r, i, dir){
+  const dd = { u:[-1,0], d:[1,0], l:[0,-1], r:[0,1] }[dir];
+  const row = board[r + dd[0]];
+  if(!row) return null;
+  const c = row[i + dd[1]];
+  return c ? { cell: c, r: r + dd[0] } : null;
+}
 
-function cardHtml(def, cls, score, attr){
-  const e = def.e;
+/* verifică TOT rândul curent și plătește orice conexiune nouă */
+function conecteaza(){
+  const r = board.length - 1;
+  const foto = new Map();
+  board.forEach(row => row.forEach(c => foto.set(c, c.score)));
+
+  const rezumat = [];
+  board[r].forEach((c, i) => {
+    ['u','d','l','r'].forEach(dir => {
+      const v = vecin(r, i, dir);
+      if(!v) return;
+      const N = v.cell;
+      if(c.def.e[dir] !== N.def.s) return;     // marginea nu se potrivește cu suita vecinului
+      const cheie = dir + ':' + N.uid;
+      if(c.platit.has(cheie)) return;          // perechea asta a plătit deja
+      c.platit.add(cheie);
+      const p = foto.get(N);
+      c.score += p;
+      c.lit[dir] = true;
+      rezumat.push(c.def.nume + ' +' + p + ' from ' + N.def.nume);
+    });
+  });
+  return rezumat;
+}
+
+/* ============================================================
+   RANDARE
+   ============================================================ */
+function suita(s, lit){
+  if(!s) return '';
+  return '<span class="' + (RED.includes(s) ? 'red' : 'blk') + (lit ? ' lit' : '') + '">' + s + '</span>';
+}
+
+function cardHtml(c, cls, attr){
+  const def = c.def, e = def.e, lit = c.lit || {};
   return '<div class="card ' + (cls||'') + '" ' + (attr||'') + '>'
-    + (e.u ? '<span class="e u">' + suita(e.u) + '</span>' : '')
-    + (e.d ? '<span class="e d">' + suita(e.d) + '</span>' : '')
-    + (e.l ? '<span class="e l">' + suita(e.l) + '</span>' : '')
-    + (e.r ? '<span class="e r">' + suita(e.r) + '</span>' : '')
-    + '<div class="val">' + def.lbl + ' ' + suita(def.s) + '</div>'
+    + (e.u ? '<span class="e u' + (lit.u?' lit':'') + '">' + suita(e.u, lit.u) + '</span>' : '')
+    + (e.d ? '<span class="e d' + (lit.d?' lit':'') + '">' + suita(e.d, lit.d) + '</span>' : '')
+    + (e.l ? '<span class="e l' + (lit.l?' lit':'') + '">' + suita(e.l, lit.l) + '</span>' : '')
+    + (e.r ? '<span class="e r' + (lit.r?' lit':'') + '">' + suita(e.r, lit.r) + '</span>' : '')
+    + '<div class="val">' + (c.shown != null ? c.shown : def.v) + '</div>'
+    + '<div class="sui">' + suita(def.s) + '</div>'
     + '<div class="nume">' + def.nume + '</div>'
-    + '<div class="fx">' + def.fx + '</div>'
-    + (score != null ? '<div class="sc">' + score + '</div>' : '')
+    + '<div class="fxzone"></div>'
     + '</div>';
+}
+
+function gapHtml(activ, i){
+  return '<div class="gap' + (activ ? ' on' : '') + '"' + (activ ? ' data-gap="' + i + '"' : '') + '></div>';
 }
 
 function render(){
@@ -143,31 +139,63 @@ function render(){
 
   const ultim = board.length - 1;
   $('mat').innerHTML = board.map((row, r) => {
-    let h = '<div class="rowlbl">rând ' + (r+1) + '</div>';
-    row.forEach((cell, i) => {
-      if(cell){
-        h += cardHtml(cell.def, '', cell.score);
-      } else if(r === ultim && !gata){
-        h += '<div class="slot' + (sel != null ? ' armed' : '') + '" data-slot="' + i + '"></div>';
-      } else {
-        h += '<div class="slot locked"></div>';
-      }
+    const curent = (r === ultim && !gata);
+    const potInsera = curent && sel != null && row.length < CONFIG.latime;
+    let h = '<div class="rowlbl">row ' + (r+1) + '</div>';
+    row.forEach((c, i) => {
+      h += gapHtml(potInsera, i);
+      h += cardHtml(c, (c.nou ? 'nou' : ''), 'data-cell="' + r + ':' + i + '"');
+      c.nou = false;
     });
+    h += gapHtml(potInsera, row.length);
+    if(!row.length) h += '<span class="rowsum" style="margin-left:0">play your first card…</span>';
     if(dmgRand[r] != null) h += '<div class="rowdmg">→ ' + dmgRand[r] + ' dmg</div>';
+    else if(curent && row.length) h += '<div class="rowsum">total <b id="rowsum">0</b></div>';
     return '<div class="row">' + h + '</div>';
   }).join('');
   $('mat').scrollTop = $('mat').scrollHeight;
 
   $('hand').innerHTML = hand.map((d, i) =>
-    cardHtml(d, 'hand' + (sel === i ? ' sel' : ''), null, 'data-hand="' + i + '"')
+    cardHtml({ def: d, shown: d.v, lit: {} }, 'hand' + (sel === i ? ' sel' : ''), 'data-hand="' + i + '"')
   ).join('');
 
   $('handlbl').innerHTML = sel == null
-    ? 'Mâna ta — click pe o carte (sau tastele 1–' + CONFIG.mana + ')'
-    : 'Selectat: <b>' + hand[sel].nume + '</b> — acum click pe un slot din rândul de jos';
+    ? 'Your hand — click a card (or keys 1–' + CONFIG.mana + ')'
+    : 'Selected: <b>' + hand[sel].nume + '</b> — click a gap in the bottom row (gaps between cards work too)';
 
-  $('status').innerHTML = 'pachet: ' + deck.length + ' · rând ' + board.length;
-  $('btnEnd').disabled = gata || !board[ultim].some(Boolean);
+  $('status').innerHTML = 'deck: ' + deck.length + ' · row ' + board.length
+    + ' · ' + randCurent().length + '/' + CONFIG.latime;
+  $('btnEnd').disabled = gata || !randCurent().length;
+  $('btnUndo').disabled = gata || !istoric.length;
+  updateTotal();
+}
+
+function updateTotal(){
+  const t = randCurent().reduce((s, c) => s + (c.shown || 0), 0);
+  $('rowtotal').textContent = t;
+  const rs = $('rowsum');
+  if(rs) rs.textContent = t;
+}
+
+/* ---------- animația numerelor: 3-4-5-6 ---------- */
+function anim(){
+  clearTimeout(animTimer);
+  const r = board.length - 1;
+  const step = () => {
+    let changed = false;
+    board[r].forEach((c, i) => {
+      if(c.shown === c.score) return;
+      const dir = c.shown < c.score ? 1 : -1;
+      c.shown += dir;
+      changed = true;
+      const el = document.querySelector('[data-cell="' + r + ':' + i + '"] .val');
+      if(el){ el.textContent = c.shown; el.className = 'val ' + (dir > 0 ? 'up' : 'down'); }
+    });
+    updateTotal();
+    if(changed) animTimer = setTimeout(step, CONFIG.pasAnim);
+    else document.querySelectorAll('.val.up,.val.down').forEach(e => e.className = 'val');
+  };
+  step();
 }
 
 function logEntry(head, det, cls){
@@ -178,99 +206,101 @@ function logEntry(head, det, cls){
   $('log').prepend(div);
 }
 
-/* ---------- joc ---------- */
+/* ============================================================
+   JOC
+   ============================================================ */
 function selecteaza(i){
   if(gata || i < 0 || i >= hand.length) return;
   sel = (sel === i) ? null : i;
   render();
 }
 
-function pune(i){
+function fotografie(){
+  return {
+    row: randCurent().map(c => ({
+      def:c.def, score:c.score, shown:c.shown, uid:c.uid, ord:c.ord,
+      lit:Object.assign({}, c.lit), platit:new Set(c.platit)
+    })),
+    hand: hand.slice()
+  };
+}
+
+function insereaza(i){
   if(gata || sel == null) return;
-  const r = board.length - 1;
-  if(board[r][i]) return;
-  board[r][i] = { def: hand[sel], r: r, c: i, score: null, links: [] };
+  const row = randCurent();
+  if(row.length >= CONFIG.latime) return;
+
+  istoric.push(fotografie());
+
+  const def = hand[sel];
+  const uid = ++ordine;
+  row.splice(i, 0, {
+    def: def, shown: def.v, score: def.v, uid: uid, ord: uid,
+    lit: {}, platit: new Set(), nou: true
+  });
   hand.splice(sel, 1);
   sel = null;
+
+  const rezumat = conecteaza();
   render();
-  if(board[r].every(Boolean)) rezolva();
+  anim();
+  if(rezumat.length) logEntry(def.v + def.s + ' ' + def.nume + ' played', '· ' + rezumat.join('\n· '));
 }
 
-function legaturi(cell){
-  const dirs = [['u',-1,0], ['d',1,0], ['l',0,-1], ['r',0,1]];
-  const out = [];
-  dirs.forEach(([k, dr, dc]) => {
-    const vrea = cell.def.e[k];
-    if(!vrea) return;
-    const row = board[cell.r + dr];
-    if(!row) return;
-    const n = row[cell.c + dc];
-    if(!n) return;
-    if(n.def.s === vrea) out.push({ dir: k, cell: n });
-  });
-  return out;
+function undo(){
+  if(gata || !istoric.length) return;
+  const f = istoric.pop();
+  board[board.length - 1] = f.row;
+  hand = f.hand;
+  sel = null;
+  render();
+  anim();
 }
 
-function rezolva(){
-  if(gata) return;
+function lovesteCuRandul(){
   const r = board.length - 1;
-  const cells = board[r].filter(Boolean);
-  if(!cells.length) return;
+  const row = board[r];
+  if(gata || !row.length) return;
 
-  const lines = [];
-  const api = { log: s => lines.push('· ' + s), mult: m => mult *= m };
-  let mult = 1;
+  clearTimeout(animTimer);
+  row.forEach(c => c.shown = c.score);
 
-  cells.forEach(c => { c.score = c.def.v; });
-
-  cells.forEach(c => {
-    c.links = legaturi(c);
-    c.links.forEach(l => c.score += l.cell.def.v);
-    if(c.links.length){
-      lines.push('· ' + c.def.nume + ': ' + c.def.v + ' + ['
-        + c.links.map(l => l.cell.def.lbl + l.cell.def.s).join(' ') + '] = ' + c.score);
-    }
-  });
-
-  cells.forEach(c => { const f = EFFECTS[c.def.id]; if(f) f(c, api); });
-
-  let sum = 0;
-  cells.forEach(c => { c.score = Math.max(0, Math.round(c.score)); sum += c.score; });
-  const dmg = Math.floor(sum * mult);
-
+  const dmg = row.reduce((s, c) => s + c.score, 0);
   dmgRand[r] = dmg;
   ehp -= dmg;
 
-  logEntry('RÂND ' + (r+1) + ' → ' + dmg + ' dmg' + (mult !== 1 ? '  (' + sum + ' ×' + mult + ')' : ''),
-           lines.join('\n'));
+  logEntry('ROW ' + (r+1) + ' → ' + dmg + ' dmg',
+    row.map(c => '· ' + c.def.nume + ' (' + c.def.v + c.def.s + ') = ' + c.score).join('\n'));
 
   if(ehp <= 0){
     gata = true;
-    logEntry('★ INAMIC ÎNVINS în ' + (r+1) + ' rânduri ★', '', 'win');
+    logEntry('★ ENEMY DEFEATED in ' + (r+1) + ' rows ★', '', 'win');
     render();
     return;
   }
-
-  board.push(randGol());
+  board.push([]);
+  istoric = [];
   trage();
   render();
 }
 
-/* ---------- evenimente (delegate, supraviețuiesc re-randării) ---------- */
+/* ---------- evenimente (delegate) ---------- */
 $('hand').addEventListener('click', e => {
   const el = e.target.closest('[data-hand]');
   if(el) selecteaza(+el.dataset.hand);
 });
 $('mat').addEventListener('click', e => {
-  const el = e.target.closest('[data-slot]');
-  if(el) pune(+el.dataset.slot);
+  const el = e.target.closest('[data-gap]');
+  if(el) insereaza(+el.dataset.gap);
 });
-$('btnEnd').addEventListener('click', () => rezolva());
-$('btnReset').addEventListener('click', () => reset());
+$('btnEnd').addEventListener('click', lovesteCuRandul);
+$('btnUndo').addEventListener('click', undo);
+$('btnReset').addEventListener('click', reset);
 document.addEventListener('keydown', e => {
   if(e.key >= '1' && e.key <= '9') selecteaza(+e.key - 1);
   if(e.key === 'Escape'){ sel = null; render(); }
-  if(e.key === 'Enter') rezolva();
+  if(e.key === 'Enter') lovesteCuRandul();
+  if(e.key === 'Backspace'){ e.preventDefault(); undo(); }
 });
 
 reset();
